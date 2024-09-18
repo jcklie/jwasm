@@ -1,13 +1,19 @@
 package main
 
 import (
+	"flag"
 	"os"
+	"path"
 
 	"github.com/jcklie/jwasm"
 )
 
+var strFlag = flag.String("f", "<default>", "input file name")
+
 func main() {
-	file, err := os.Open("testdata/wat2wasm/simple.wasm")
+	flag.Parse()
+
+	file, err := os.Open(path.Join("testdata/wat2wasm/", *strFlag))
 
 	if err != nil {
 		panic(err)

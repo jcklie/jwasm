@@ -20,7 +20,7 @@ func ReadUint8(r io.Reader) (uint8, error) {
 	return uint8(value.Uint64()), nil
 }
 
-func ReadUint32(r io.Reader) (uint8, error) {
+func ReadUint32(r io.Reader) (uint32, error) {
 	value, err := ReadUleb128(r)
 	if err != nil {
 		return 0, fmt.Errorf("reading uleb128 for uint8 failed: %w", err)
@@ -30,7 +30,7 @@ func ReadUint32(r io.Reader) (uint8, error) {
 		return 0, fmt.Errorf("uleb128 is too large for an uint8: %s", value)
 	}
 
-	return uint8(value.Uint64()), nil
+	return uint32(value.Uint64()), nil
 }
 
 func ReadUleb128(r io.Reader) (*big.Int, error) {
