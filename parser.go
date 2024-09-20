@@ -47,7 +47,7 @@ func (p *Parser) Parse(r io.Reader) error {
 			return err
 		}
 
-		fmt.Printf("Section: id=%d, %+v\n", section.SectionId(), section)
+		fmt.Printf("Section: %+v\n", section)
 	}
 
 	return nil

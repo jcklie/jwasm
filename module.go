@@ -27,7 +27,7 @@ const (
 )
 
 type Section interface {
-	SectionId() SectionId
+	section()
 }
 
 type CustomSection struct {
@@ -39,8 +39,13 @@ type TypeSection struct {
 	FunctionTypes []FunctionType
 }
 
-func (cs *CustomSection) SectionId() SectionId { return customSectionId }
-func (cs *TypeSection) SectionId() SectionId   { return typeSectionId }
+type FunctionSection struct {
+	typeIndices []uint32
+}
+
+func (cs *CustomSection) section()   {}
+func (cs *TypeSection) section()     {}
+func (cs *FunctionSection) section() {}
 
 func parseSection(r io.Reader) (Section, error) {
 	// https://webassembly.github.io/spec/core/binary/modules.html#sections
@@ -67,7 +72,6 @@ func parseSection(r io.Reader) (Section, error) {
 		return nil, fmt.Errorf("reading section size failed: %w", err)
 	}
 
-	fmt.Printf("Section size: %d\n", sectionSize)
 	limitReader := io.LimitReader(r, int64(sectionSize))
 
 	// Parse section
@@ -76,6 +80,8 @@ func parseSection(r io.Reader) (Section, error) {
 		return parseCustomSection(limitReader)
 	case typeSectionId:
 		return parseTypeSection(limitReader)
+	case functionSectionId:
+		return parseFunctionSection(limitReader)
 	default:
 		return nil, fmt.Errorf("reading of section with unknown id failed: %d", sectionId)
 	}
@@ -111,6 +117,7 @@ func parseTypeSection(r io.Reader) (*TypeSection, error) {
 	//
 	// The type section decodes into a vector of function types that represent the
 	// component types of a module.
+
 	numTypes, err := ReadUint32(r)
 	if err != nil {
 		return nil, fmt.Errorf("reading vector size of function types failed: %w", err)
@@ -123,7 +130,6 @@ func parseTypeSection(r io.Reader) (*TypeSection, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading function type failed: %w", err)
 		}
-		fmt.Println(functionType)
 
 		functionTypes = append(functionTypes, functionType)
 	}
@@ -131,4 +137,29 @@ func parseTypeSection(r io.Reader) (*TypeSection, error) {
 	result := new(TypeSection)
 	result.FunctionTypes = functionTypes
 	return result, nil
+}
+
+func parseFunctionSection(r io.Reader) (*FunctionSection, error) {
+	// https://webassembly.github.io/spec/core/binary/modules.html#function-section
+
+	// The function section has the id 3. It decodes into a vector of type indices that represent
+	// the `type` fields of the functions in the `funcs` component of a module. The `locals` and
+	// and `body` fields of the respective functions are encoded separately in the code section.
+
+	numIndices, err := ReadUint32(r)
+	if err != nil {
+		return nil, fmt.Errorf("reading vector size of function section failed: %w", err)
+	}
+
+	var typeIndices []uint32
+	for i := 0; i < int(numIndices); i++ {
+		typeIdx, err := ReadUint32(r)
+		if err != nil {
+			return nil, fmt.Errorf("reading type index in function section failed: %w", err)
+		}
+
+		typeIndices = append(typeIndices, typeIdx)
+	}
+
+	return &FunctionSection{typeIndices}, nil
 }
