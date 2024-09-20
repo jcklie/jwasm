@@ -36,8 +36,7 @@ type CustomSection struct {
 }
 
 type TypeSection struct {
-	Name string
-	Data []byte
+	FunctionTypes []FunctionType
 }
 
 func (cs *CustomSection) SectionId() SectionId { return customSectionId }
@@ -114,12 +113,22 @@ func parseTypeSection(r io.Reader) (*TypeSection, error) {
 	// component types of a module.
 	numTypes, err := ReadUint32(r)
 	if err != nil {
-		return nil, fmt.Errorf("reading num types failed: %w", err)
+		return nil, fmt.Errorf("reading vector size of function types failed: %w", err)
 	}
 
+	var functionTypes []FunctionType
 	for i := 0; i < int(numTypes); i++ {
-		// functionType, err := parseFunctionType(r)
+		functionType, err := parseFunctionType(r)
+
+		if err != nil {
+			return nil, fmt.Errorf("reading function type failed: %w", err)
+		}
+		fmt.Println(functionType)
+
+		functionTypes = append(functionTypes, functionType)
 	}
 
-	return nil, nil
+	result := new(TypeSection)
+	result.FunctionTypes = functionTypes
+	return result, nil
 }

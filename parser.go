@@ -38,7 +38,6 @@ func (p *Parser) Parse(r io.Reader) error {
 	// Parse sections
 	for {
 		section, err := parseSection(r)
-		fmt.Printf("Section: id=%d, %+v", section.SectionId(), section)
 
 		if err == io.EOF {
 			break
@@ -47,6 +46,8 @@ func (p *Parser) Parse(r io.Reader) error {
 		if err != nil {
 			return err
 		}
+
+		fmt.Printf("Section: id=%d, %+v\n", section.SectionId(), section)
 	}
 
 	return nil
