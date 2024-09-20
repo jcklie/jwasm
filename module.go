@@ -6,7 +6,21 @@ import (
 	"io"
 )
 
-type instructionType int
+// Indices
+//  https://webassembly.github.io/spec/core/binary/modules.html#indices
+
+type typeIndex uint32
+type functionIndex uint32
+type tableIndex uint32
+type memoryIndex uint32
+type globalIndex uint32
+type elementIndex uint32
+type dataIndex uint32
+type localIndex uint32
+type labelIndex uint32
+
+// Sections
+// https://webassembly.github.io/spec/core/binary/modules.html#sections
 
 type SectionId byte
 
@@ -26,10 +40,6 @@ const (
 	dataCountSectionId SectionId = 12
 )
 
-type Section interface {
-	section()
-}
-
 type CustomSection struct {
 	Name string
 	Data []byte
@@ -43,9 +53,57 @@ type FunctionSection struct {
 	typeIndices []uint32
 }
 
+type ExportSection struct {
+	exports []export
+}
+
+// https://webassembly.github.io/spec/core/syntax/modules.html#syntax-exportdesc
+type export struct {
+	name              string
+	exportDescription exportDescription
+}
+
+// https://webassembly.github.io/spec/core/syntax/modules.html#syntax-exportdesc
+type exportDescription interface {
+	exportDescription()
+}
+
+type exportDescriptionFunc struct {
+	functionIndex functionIndex
+}
+
+type exportDescriptionTable struct {
+	tableIndex tableIndex
+}
+
+type exportDescriptionMem struct {
+	memoryIndex memoryIndex
+}
+
+type exportDescriptionGlobal struct {
+	globalIndex globalIndex
+}
+
+func (*exportDescriptionFunc) exportDescription()   {}
+func (*exportDescriptionTable) exportDescription()  {}
+func (*exportDescriptionMem) exportDescription()    {}
+func (*exportDescriptionGlobal) exportDescription() {}
+
+func (exportDescriptionFunc) String() string   { return "func" }
+func (exportDescriptionTable) String() string  { return "table" }
+func (exportDescriptionMem) String() string    { return "mem" }
+func (exportDescriptionGlobal) String() string { return "global" }
+
+// Section
+
+type Section interface {
+	section()
+}
+
 func (cs *CustomSection) section()   {}
 func (cs *TypeSection) section()     {}
 func (cs *FunctionSection) section() {}
+func (cs *ExportSection) section()   {}
 
 func parseSection(r io.Reader) (Section, error) {
 	// https://webassembly.github.io/spec/core/binary/modules.html#sections
@@ -82,6 +140,8 @@ func parseSection(r io.Reader) (Section, error) {
 		return parseTypeSection(limitReader)
 	case functionSectionId:
 		return parseFunctionSection(limitReader)
+	case exportSectionId:
+		return parseExportSection(limitReader)
 	default:
 		return nil, fmt.Errorf("reading of section with unknown id failed: %d", sectionId)
 	}
@@ -162,4 +222,54 @@ func parseFunctionSection(r io.Reader) (*FunctionSection, error) {
 	}
 
 	return &FunctionSection{typeIndices}, nil
+}
+
+func parseExportSection(r io.Reader) (*ExportSection, error) {
+	// https://webassembly.github.io/spec/core/binary/modules.html#export-section
+	//
+	// The export section has the id 7. It decodes into a vector of exports that represent the
+	// `exports` component of a module.
+
+	numExports, err := ReadUint32(r)
+	if err != nil {
+		return nil, fmt.Errorf("reading vector size of export section failed: %w", err)
+	}
+
+	var exports []export
+	for i := 0; i < int(numExports); i++ {
+		name, err := parseName(r)
+		if err != nil {
+			return nil, fmt.Errorf("parsing name of export failed: %w", err)
+		}
+
+		var b byte
+		err = binary.Read(r, binary.BigEndian, &b)
+		if err != nil {
+			return nil, fmt.Errorf("reading export description type byte failed: %w", err)
+		}
+
+		var x uint32
+		err = binary.Read(r, binary.BigEndian, &b)
+		if err != nil {
+			return nil, fmt.Errorf("reading export description index failed: %w", err)
+		}
+
+		var exportDescription exportDescription
+		switch b {
+		case 0x00:
+			exportDescription = &exportDescriptionFunc{functionIndex(x)}
+		case 0x01:
+			exportDescription = &exportDescriptionTable{tableIndex(x)}
+		case 0x02:
+			exportDescription = &exportDescriptionMem{memoryIndex(x)}
+		case 0x03:
+			exportDescription = &exportDescriptionGlobal{globalIndex(x)}
+		}
+
+		export := export{name, exportDescription}
+
+		exports = append(exports, export)
+	}
+
+	return &ExportSection{exports}, nil
 }
