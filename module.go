@@ -81,6 +81,8 @@ func parseSection(r io.Reader) (Section, error) {
 		return parseFunctionSection(limitReader)
 	case exportSectionId:
 		return parseExportSection(limitReader)
+	case codeSectionId:
+		return parseCodeSection(limitReader)
 	default:
 		return nil, fmt.Errorf("reading of section with unknown id failed: %d", sectionId)
 	}
@@ -281,4 +283,73 @@ func parseExportSection(r io.Reader) (*ExportSection, error) {
 	}
 
 	return &ExportSection{exports}, nil
+}
+
+// Code Section
+
+type CodeSection struct {
+	functionCode []functionCode
+}
+
+func (cs *CodeSection) section() {}
+
+// https://webassembly.github.io/spec/core/binary/modules.html#binary-func
+type functionCode struct {
+	locals map[ValueType]uint32
+	body   []instruction
+}
+
+func parseCodeSection(r io.Reader) (*CodeSection, error) {
+	// https://webassembly.github.io/spec/core/binary/modules.html#code-section
+	//
+	// The code section has the id 10. It decodes into a vector of code entries
+	// that are pairs of value type vectors and expressions. They represent the
+	// `locals` and `body` field of the functions in the `funcs` component of a
+	// module. The `type` fields of the respective functions are encoded separately
+	// in the function section.
+
+	numEntries, err := ReadUint32(r)
+	if err != nil {
+		return nil, fmt.Errorf("reading vector size of code section failed: %w", err)
+	}
+
+	var result []functionCode
+	for i := 0; i < int(numEntries); i++ {
+		codeSize, err := ReadUint32(r)
+		if err != nil {
+			return nil, fmt.Errorf("reading vector size of function code failed: %w", err)
+		}
+
+		// Parse locals
+		limitReader := io.LimitReader(r, int64(codeSize))
+		numLocals, err := ReadUint32(limitReader)
+		if err != nil {
+			return nil, fmt.Errorf("reading vector size of function locals failed: %w", err)
+		}
+
+		locals := make(map[ValueType]uint32)
+		for j := 0; j < int(numLocals); j++ {
+			n, err := ReadUint32(limitReader)
+			if err != nil {
+				return nil, fmt.Errorf("reading function locals n failed: %w", err)
+			}
+
+			valueType, err := parseValueType(limitReader)
+			if err != nil {
+				return nil, fmt.Errorf("reading function locals value type failed: %w", err)
+			}
+
+			locals[valueType] += n
+		}
+
+		instructions, err := parseInstructions(limitReader)
+		if err != nil {
+			return nil, fmt.Errorf("reading function body failed: %w", err)
+		}
+
+		functionCode := functionCode{locals, instructions}
+		result = append(result, functionCode)
+	}
+
+	return &CodeSection{result}, nil
 }
